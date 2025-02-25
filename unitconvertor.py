@@ -5,11 +5,63 @@ import re
 from pint import UnitRegistry
 
 # -------------------------------
+# Custom CSS for Enhanced UI
+# -------------------------------
+st.markdown(
+    """
+    <style>
+    /* Main container styling */
+    .main {
+        background-color: #f0f2f6;
+        padding: 2rem;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    /* Header styling */
+    h1, h2, h3, h4, h5, h6 {
+        color: #333;
+        font-weight: 600;
+    }
+    /* Paragraph styling */
+    p {
+        color: #555;
+        font-size: 1.1rem;
+    }
+    /* Text input styling */
+    .stTextInput>div>div>input {
+        border: 2px solid #ccc;
+        border-radius: 8px;
+        padding: 0.8rem;
+        font-size: 1.1rem;
+    }
+    /* Button styling */
+    div.stButton > button {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.8rem 1.2rem;
+        font-size: 1.1rem;
+        cursor: pointer;
+    }
+    div.stButton > button:hover {
+        background-color: #45a049;
+    }
+    /* Sidebar styling */
+    .css-1d391kg { 
+        background-color: #ffffff;
+        padding: 1rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+# -------------------------------
 # Configuration & Initialization
 # -------------------------------
 
 # Set your OpenAI API key (only needed for the LLM parser)
-openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your actual API key if using the LLM parser
+openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your actual API key if using LLM parsing
 
 # Initialize the pint unit registry (supports length, temperature, weight, time, area, etc.)
 ureg = UnitRegistry()
@@ -90,15 +142,20 @@ def convert_units(value, source_unit, target_unit):
 # -------------------------------
 
 def converter_app(conversion_mode):
+    st.markdown('<div class="main">', unsafe_allow_html=True)
     st.header("Smart Unit Converter")
     st.write(
-        "Enter your conversion query below. Examples:\n\n"
-        "- **Length:** Convert 10 km to miles\n"
-        "- **Temperature:** Convert 100°F to °C\n"
-        "- **Weight:** Convert 5 kg to lb\n"
-        "- **Time:** Convert 2 hours to minutes\n"
-        "- **Area:** Convert 50 m² to ft²\n\n"
-        "The converter supports various unit types including length, temperature, weight, time, area, and more."
+        """
+        Enter your conversion query below. Examples:
+        
+        - **Length:** Convert 10 km to miles  
+        - **Temperature:** Convert 100°F to °C  
+        - **Weight:** Convert 5 kg to lb  
+        - **Time:** Convert 2 hours to minutes  
+        - **Area:** Convert 50 m² to ft²  
+
+        The converter supports various unit types including length, temperature, weight, time, area, and more.
+        """
     )
     
     query = st.text_input("Conversion Query", "")
@@ -130,17 +187,25 @@ def converter_app(conversion_mode):
                             st.error("Conversion failed. Please check the provided units.")
                     except ValueError:
                         st.error("Invalid numeric value provided in the query.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def about_page():
+    st.markdown('<div class="main">', unsafe_allow_html=True)
     st.header("About This App")
     st.write(
-        "This Smart Unit Converter app is built using Python and Streamlit. It supports conversions for various unit types "
-        "including length, temperature, weight, time, area, and more using the 'pint' library.\n\n"
-        "The app provides two options for parsing the conversion query:\n"
-        "1. **LLM Parser:** Uses OpenAI's GPT-3.5-turbo to extract conversion details from a natural language query.\n"
-        "2. **Regex Parser:** Uses a regular expression to parse the query without external API calls.\n\n"
-        "Use the sidebar navigation to select your desired parser and switch between the Converter and this About page."
+        """
+        This Smart Unit Converter app is built using Python and Streamlit. It supports conversions for various unit types 
+        including length, temperature, weight, time, area, and more using the 'pint' library.
+        
+        The app provides two options for parsing the conversion query:
+        
+        1. **LLM Parser:** Uses OpenAI's GPT-3.5-turbo to extract conversion details from a natural language query.
+        2. **Regex Parser:** Uses a regular expression to parse the query without external API calls.
+        
+        Use the sidebar navigation to select your desired parser and switch between the Converter and this About page.
+        """
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # -------------------------------
 # Main App
