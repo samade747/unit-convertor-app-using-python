@@ -29,14 +29,13 @@ except ModuleNotFoundError:
 # Initialize Unit Registry & Currency Converter
 # -------------------------------
 ureg = pint.UnitRegistry()
-ureg.define("celsius = kelvin; offset: 273.15")  # Handling temperature conversion
+ureg.define("celsius = kelvin; offset: 273.15")  # Handle temperature conversions
 currency_converter = CurrencyConverter()
 
 # -------------------------------
-# Custom CSS for UI Styling
+# Custom CSS for UI Styling & Page Config
 # -------------------------------
 st.set_page_config(page_title="UniFlex Converter", layout="wide")
-
 st.markdown(
     """
     <style>
@@ -49,15 +48,16 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 st.markdown('<div class="header">🔄 UniFlex Converter</div>', unsafe_allow_html=True)
 
 # -------------------------------
-# Sidebar Navigation
+# Sidebar: Global Navigation & Mode Selection
 # -------------------------------
-st.sidebar.title("🌐 **UniFlex Converter**")
-st.sidebar.markdown("### Select a category:")
+st.sidebar.title("🌐 UniFlex Converter")
+st.sidebar.markdown("### Select Conversion Mode:")
+conversion_mode = st.sidebar.radio("Mode", ["Category Converter", "Text Converter"])
 
+# For category-based conversion, select a category:
 categories = {
     "📏 Length": ["meter", "kilometer", "mile", "yard", "foot", "inch", "centimeter", "millimeter"],
     "⚖️ Weight": ["kilogram", "gram", "pound", "ounce", "ton", "stone"],
@@ -68,25 +68,39 @@ categories = {
     "🛢️ Volume": ["liter", "milliliter", "gallon", "meter ** 3", "centimeter ** 3"],
     "⚡ Energy": ["joule", "kilojoule", "calorie", "kilocalorie", "watt_hour", "kilowatt_hour"],
     "💾 Digital Storage": ["bit", "byte", "kilobyte", "megabyte", "gigabyte", "terabyte"],
-    "💰 Currency": None  # Currency handled separately
+    "💰 Currency": None  # Handled separately
 }
 
-selected_category = st.sidebar.radio("", list(categories.keys()), index=0)
+# For category mode, let the user select a category:
+if conversion_mode == "Category Converter":
+    selected_category = st.sidebar.radio("Select Category", list(categories.keys()), index=0)
 
 # -------------------------------
-# Conversion Function
+# Helper Conversion Function (for text mode)
 # -------------------------------
-def convert_units(unit_list):
-    input_value = st.number_input("Enter value:", value=1.0)
-    from_unit = st.selectbox("From:", unit_list, key="from_unit")
-    to_unit = st.selectbox("To:", unit_list, key="to_unit")
+def do_conversion(value, source_unit, target_unit):
+    try:
+        # Special handling for temperature conversions
+        if source_unit.lower() in ["celsius", "fahrenheit", "kelvin"] or target_unit.lower() in ["celsius", "fahrenheit", "kelvin"]:
+            result = ureg.Quantity(value, ureg(source_unit)).to(ureg(target_unit))
+        else:
+            result = (value * ureg(source_unit)).to(target_unit)
+        return result.magnitude
+    except Exception as e:
+        return None
 
+# -------------------------------
+# Category Converter (using drop-downs)
+# -------------------------------
+def category_converter(unit_list):
+    input_value = st.number_input("Enter value:", value=1.0, key="cat_value")
+    from_unit = st.selectbox("From:", unit_list, key="cat_from")
+    to_unit = st.selectbox("To:", unit_list, key="cat_to")
     try:
         if selected_category == "🌡️ Temperature":
             result = ureg.Quantity(input_value, ureg(from_unit)).to(ureg(to_unit))
         else:
             result = (input_value * ureg(from_unit)).to(to_unit)
-
         st.success(f"{input_value} {from_unit} = {result:.4f} {to_unit}")
     except Exception as e:
         st.error(f"Conversion error: {e}")
@@ -96,10 +110,9 @@ def convert_units(unit_list):
 # -------------------------------
 def convert_currency():
     currency_list = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "INR", "CNY"]
-    input_value = st.number_input("Enter amount:", value=1.0)
-    from_currency = st.selectbox("From:", currency_list, key="from_currency")
-    to_currency = st.selectbox("To:", currency_list, key="to_currency")
-
+    input_value = st.number_input("Enter amount:", value=1.0, key="curr_value")
+    from_currency = st.selectbox("From:", currency_list, key="curr_from")
+    to_currency = st.selectbox("To:", currency_list, key="curr_to")
     try:
         result = currency_converter.convert(input_value, from_currency, to_currency)
         st.success(f"{input_value} {from_currency} = {result:.2f} {to_currency}")
@@ -107,7 +120,7 @@ def convert_currency():
         st.error(f"Currency conversion failed: {e}")
 
 # -------------------------------
-# LLM Parser: OpenAI GPT-3.5
+# LLM & Regex Parsers for Text Mode
 # -------------------------------
 def parse_conversion_query_openai(query):
     prompt = f"""
@@ -125,9 +138,6 @@ def parse_conversion_query_openai(query):
     except Exception as e:
         return {"error": str(e)}
 
-# -------------------------------
-# LLM Parser: Google Gemini
-# -------------------------------
 def parse_conversion_query_gemini(query):
     prompt = f"""
     Extract the numeric value, source unit, and target unit from this conversion query.
@@ -141,16 +151,242 @@ def parse_conversion_query_gemini(query):
     except Exception as e:
         return {"error": str(e)}
 
+def parse_conversion_query_regex(query):
+    pattern = r'(?i)(?:convert\s+)?([-+]?[0-9]*\.?[0-9]+)\s*([a-zA-Z°²³]+)\s+(?:to|in)\s+([a-zA-Z°²³]+)'
+    match = re.search(pattern, query)
+    if match:
+        return {"value": match.group(1), "source": match.group(2), "target": match.group(3)}
+    else:
+        return {"error": "Unable to parse the query. Please use a format like 'Convert 10 km to miles'."}
+
 # -------------------------------
-# Handle Categories
+# Text Converter (using LLM or Regex)
 # -------------------------------
-if selected_category in categories and selected_category != "💰 Currency":
-    convert_units(categories[selected_category])
-elif selected_category == "💰 Currency":
-    convert_currency()
+def text_converter_app(parser_mode, llm_choice=None):
+    st.subheader("Text-based Converter")
+    query = st.text_input("Enter conversion query (e.g., 'Convert 10 km to miles')", key="text_query")
+    if st.button("Convert Text Query"):
+        with st.spinner("Processing your query..."):
+            if parser_mode == "LLM Parser":
+                if llm_choice == "OpenAI GPT-3.5":
+                    if LLM_OPENAI_AVAILABLE:
+                        conversion_details = parse_conversion_query_openai(query)
+                    else:
+                        st.error("OpenAI API is not available.")
+                        return
+                elif llm_choice == "Google Gemini":
+                    if LLM_GEMINI_AVAILABLE:
+                        conversion_details = parse_conversion_query_gemini(query)
+                    else:
+                        st.error("Google Gemini API is not available.")
+                        return
+                else:
+                    st.error("Please select a valid LLM option.")
+                    return
+            else:
+                conversion_details = parse_conversion_query_regex(query)
+            
+            if "error" in conversion_details:
+                st.error(conversion_details["error"])
+            else:
+                try:
+                    value = float(conversion_details["value"])
+                except Exception as e:
+                    st.error("Invalid numeric value extracted.")
+                    return
+                source_unit = conversion_details["source"]
+                target_unit = conversion_details["target"]
+                result = do_conversion(value, source_unit, target_unit)
+                if result is not None:
+                    st.success(f"{value} {source_unit} = {result:.4f} {target_unit}")
+                else:
+                    st.error("Conversion failed.")
+
+def do_conversion(value, source_unit, target_unit):
+    try:
+        # Use special handling for temperature conversions if necessary
+        if source_unit.lower() in ["celsius", "fahrenheit", "kelvin"] or target_unit.lower() in ["celsius", "fahrenheit", "kelvin"]:
+            result = ureg.Quantity(value, ureg(source_unit)).to(ureg(target_unit))
+        else:
+            result = (value * ureg(source_unit)).to(target_unit)
+        return result.magnitude
+    except Exception as e:
+        return None
+
+# -------------------------------
+# Main Application: Routing Based on Conversion Mode
+# -------------------------------
+if conversion_mode == "Category Converter":
+    # For Category mode, handle currency separately
+    if selected_category == "💰 Currency":
+        convert_currency()
+    else:
+        category_converter(categories[selected_category])
+else:  # Text Converter mode
+    parser_mode = st.sidebar.radio("Parser Mode", ["LLM Parser", "Regex Parser"])
+    llm_choice = None
+    if parser_mode == "LLM Parser":
+        llm_choice = st.sidebar.radio("LLM Choice", ["OpenAI GPT-3.5", "Google Gemini"])
+    text_converter_app(parser_mode, llm_choice)
 
 st.markdown("---")
 st.markdown("Created by ❤️ samade747 using **Streamlit UV** and **Python**")
+
+
+
+# import streamlit as st
+# import json
+# import re
+# import pint
+# from currency_converter import CurrencyConverter
+
+# # -------------------------------
+# # Try to import OpenAI (LLM Parser)
+# # -------------------------------
+# try:
+#     import openai
+#     openai.api_key = "YOUR_OPENAI_API_KEY"  # Replace with your API key
+#     LLM_OPENAI_AVAILABLE = True
+# except ModuleNotFoundError:
+#     LLM_OPENAI_AVAILABLE = False
+
+# # -------------------------------
+# # Try to import Google Gemini (PaLM API)
+# # -------------------------------
+# try:
+#     import google.generativeai as genai
+#     GEMINI_API_KEY = "YOUR_GOOGLE_GEMINI_API_KEY"  # Replace with your API key
+#     genai.configure(api_key=GEMINI_API_KEY)
+#     LLM_GEMINI_AVAILABLE = True
+# except ModuleNotFoundError:
+#     LLM_GEMINI_AVAILABLE = False
+
+# # -------------------------------
+# # Initialize Unit Registry & Currency Converter
+# # -------------------------------
+# ureg = pint.UnitRegistry()
+# ureg.define("celsius = kelvin; offset: 273.15")  # Handling temperature conversion
+# currency_converter = CurrencyConverter()
+
+# # -------------------------------
+# # Custom CSS for UI Styling
+# # -------------------------------
+# st.set_page_config(page_title="UniFlex Converter", layout="wide")
+
+# st.markdown(
+#     """
+#     <style>
+#     .header { font-size: 28px; font-weight: bold; text-align: center; padding: 10px; color: #4C7769; margin-bottom: 20px; }
+#     .stTextInput>div>div>input, .stNumberInput>div>div>input { border: 2px solid #ccc; border-radius: 8px; padding: 0.8rem; font-size: 1.1rem; }
+#     div.stButton > button { background-color: #4CAF50; color: white; border-radius: 8px; padding: 0.8rem 1.2rem; }
+#     div.stButton > button:hover { background-color: #45a049; }
+#     .stSelectbox>div>div { border: 2px solid #ccc; border-radius: 8px; padding: 0.5rem; }
+#     </style>
+#     """,
+#     unsafe_allow_html=True,
+# )
+
+# st.markdown('<div class="header">🔄 UniFlex Converter</div>', unsafe_allow_html=True)
+
+# # -------------------------------
+# # Sidebar Navigation
+# # -------------------------------
+# st.sidebar.title("🌐 **UniFlex Converter**")
+# st.sidebar.markdown("### Select a category:")
+
+# categories = {
+#     "📏 Length": ["meter", "kilometer", "mile", "yard", "foot", "inch", "centimeter", "millimeter"],
+#     "⚖️ Weight": ["kilogram", "gram", "pound", "ounce", "ton", "stone"],
+#     "🌡️ Temperature": ["celsius", "fahrenheit", "kelvin"],
+#     "🚀 Speed": ["meter/second", "kilometer/hour", "mile/hour", "knot"],
+#     "⏳ Time": ["second", "minute", "hour", "day", "week", "month", "year"],
+#     "📐 Area": ["meter ** 2", "kilometer ** 2", "mile ** 2", "yard ** 2", "foot ** 2", "inch ** 2", "hectare", "acre"],
+#     "🛢️ Volume": ["liter", "milliliter", "gallon", "meter ** 3", "centimeter ** 3"],
+#     "⚡ Energy": ["joule", "kilojoule", "calorie", "kilocalorie", "watt_hour", "kilowatt_hour"],
+#     "💾 Digital Storage": ["bit", "byte", "kilobyte", "megabyte", "gigabyte", "terabyte"],
+#     "💰 Currency": None  # Currency handled separately
+# }
+
+# selected_category = st.sidebar.radio("", list(categories.keys()), index=0)
+
+# # -------------------------------
+# # Conversion Function
+# # -------------------------------
+# def convert_units(unit_list):
+#     input_value = st.number_input("Enter value:", value=1.0)
+#     from_unit = st.selectbox("From:", unit_list, key="from_unit")
+#     to_unit = st.selectbox("To:", unit_list, key="to_unit")
+
+#     try:
+#         if selected_category == "🌡️ Temperature":
+#             result = ureg.Quantity(input_value, ureg(from_unit)).to(ureg(to_unit))
+#         else:
+#             result = (input_value * ureg(from_unit)).to(to_unit)
+
+#         st.success(f"{input_value} {from_unit} = {result:.4f} {to_unit}")
+#     except Exception as e:
+#         st.error(f"Conversion error: {e}")
+
+# # -------------------------------
+# # Currency Converter Function
+# # -------------------------------
+# def convert_currency():
+#     currency_list = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "INR", "CNY"]
+#     input_value = st.number_input("Enter amount:", value=1.0)
+#     from_currency = st.selectbox("From:", currency_list, key="from_currency")
+#     to_currency = st.selectbox("To:", currency_list, key="to_currency")
+
+#     try:
+#         result = currency_converter.convert(input_value, from_currency, to_currency)
+#         st.success(f"{input_value} {from_currency} = {result:.2f} {to_currency}")
+#     except Exception as e:
+#         st.error(f"Currency conversion failed: {e}")
+
+# # -------------------------------
+# # LLM Parser: OpenAI GPT-3.5
+# # -------------------------------
+# def parse_conversion_query_openai(query):
+#     prompt = f"""
+#     Extract the numeric value, source unit, and target unit from this conversion query.
+#     Output JSON format: {{"value": 10, "source": "km", "target": "mile"}}
+#     Query: {query}
+#     """
+#     try:
+#         response = openai.ChatCompletion.create(
+#             model="gpt-3.5-turbo",
+#             messages=[{"role": "user", "content": prompt}],
+#             temperature=0
+#         )
+#         return json.loads(response['choices'][0]['message']['content'])
+#     except Exception as e:
+#         return {"error": str(e)}
+
+# # -------------------------------
+# # LLM Parser: Google Gemini
+# # -------------------------------
+# def parse_conversion_query_gemini(query):
+#     prompt = f"""
+#     Extract the numeric value, source unit, and target unit from this conversion query.
+#     Output JSON format: {{"value": 10, "source": "km", "target": "mile"}}
+#     Query: {query}
+#     """
+#     try:
+#         model = genai.GenerativeModel("gemini-pro")
+#         response = model.generate_content(prompt)
+#         return json.loads(response.text.strip())
+#     except Exception as e:
+#         return {"error": str(e)}
+
+# # -------------------------------
+# # Handle Categories
+# # -------------------------------
+# if selected_category in categories and selected_category != "💰 Currency":
+#     convert_units(categories[selected_category])
+# elif selected_category == "💰 Currency":
+#     convert_currency()
+
+# st.markdown("---")
+# st.markdown("Created by ❤️ samade747 using **Streamlit UV** and **Python**")
 
 
 
