@@ -2,8 +2,7 @@ import streamlit as st
 import json
 import re
 import pint
-from forex_python.converter import CurrencyRates, CurrencyConverter
-currency_converter = CurrencyConverter()
+from currency_converter import CurrencyConverter
 
 # -------------------------------
 # Try to import OpenAI (LLM Parser)
